@@ -17,7 +17,7 @@ set -euo pipefail
 #==============================================================================
 
 readonly SCRIPT_NAME="bibleverse"
-readonly SCRIPT_VERSION="1.0.0"
+readonly SCRIPT_VERSION="1.1.0"
 readonly API_BASE_URL="https://bible-api.com/data"
 
 # Available translations (17 Public Domain versions)
@@ -466,6 +466,7 @@ parse_args() {
     # Defaults
     TESTAMENT="both"
     BOOKS=()
+    BOOK_LIST=()
     TRANSLATION="web"
 
     while [[ $# -gt 0 ]]; do
