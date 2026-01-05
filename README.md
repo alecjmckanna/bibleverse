@@ -52,12 +52,14 @@ curl -fsSL https://raw.githubusercontent.com/alecjmckanna/bibleverse/main/instal
 ### Manual Installation
 
 1. **Download the script:**
+
    ```bash
    curl -o bibleverse https://raw.githubusercontent.com/alecjmckanna/bibleverse/main/bibleverse
    chmod +x bibleverse
    ```
 
 2. **Move to a directory in your PATH:**
+
    ```bash
    # Option 1: User-specific installation (recommended)
    mkdir -p ~/.local/bin
@@ -144,6 +146,7 @@ bibleverse -b "1 cor"    # Matches 1 Corinthians
 ## Available Translations
 
 ### English (10 versions)
+
 - `web` - World English Bible (default)
 - `kjv` - King James Version
 - `asv` - American Standard Version (1901)
@@ -156,6 +159,7 @@ bibleverse -b "1 cor"    # Matches 1 Corinthians
 - `webbe` - World English Bible (British Edition)
 
 ### Other Languages (7 versions)
+
 - `cherokee` - Cherokee New Testament
 - `cuv` - Chinese Union Version (Traditional)
 - `bkr` - Bible kralická (Czech)
@@ -219,17 +223,20 @@ fi
 ### Installing Dependencies
 
 **macOS (Homebrew):**
+
 ```bash
 brew install jq
 # curl and bash are pre-installed
 ```
 
 **Ubuntu/Debian:**
+
 ```bash
 sudo apt-get install jq curl
 ```
 
 **Fedora/RHEL:**
+
 ```bash
 sudo dnf install jq curl
 ```
@@ -237,6 +244,7 @@ sudo dnf install jq curl
 ## API
 
 This tool uses the [bible_api](https://github.com/seven1m/bible_api) project by Tim Morgan, available at [bible-api.com](https://bible-api.com):
+
 - ✅ **Free and open source** - no API key required
 - ✅ **No rate limits** for reasonable use (15 requests per 30 seconds)
 - ✅ **Public Domain translations** - all 17 versions are freely available
@@ -313,7 +321,7 @@ Created by [Alec McKanna](https://github.com/alecjmckanna)
 
 ## Version
 
-Current version: 1.0.0
+Current version: 1.1.0
 
 ---
 
