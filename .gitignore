@@ -53,6 +53,7 @@ build/
 *.zip
 *.deb
 *.rpm
+DISTRIBUTION.md
 
 # Homebrew testing
 *.bottle.*
