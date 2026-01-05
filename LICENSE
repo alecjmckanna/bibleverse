@@ -1,0 +1,56 @@
+MIT License
+
+Copyright (c) 2025 Alec McKanna
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## Third-Party Licenses and Attributions
+
+### bible_api
+This software uses the bible_api project by Tim Morgan.
+- GitHub: https://github.com/seven1m/bible_api
+- Website: https://bible-api.com
+- License: MIT License
+- Copyright (c) Tim Morgan
+- No API key required, free to use
+
+### Bible Translations
+All Bible translations provided by this software are in the Public Domain:
+
+1. World English Bible (WEB) - Public Domain
+2. King James Version (KJV) - Public Domain
+3. American Standard Version (ASV) - Public Domain
+4. Bible in Basic English (BBE) - Public Domain
+5. Darby Bible - Public Domain
+6. Douay-Rheims 1899 - Public Domain
+7. Young's Literal Translation (YLT) - Public Domain
+8. Open English Bible (OEB) - Public Domain
+9. Cherokee New Testament - Public Domain
+10. Chinese Union Version (CUV) - Public Domain
+11. Bible kralická (BKR) - Public Domain
+12. Clementine Latin Vulgate - Public Domain
+13. João Ferreira de Almeida - Public Domain
+14. Romanian Corrected Cornilescu - Public Domain
+15. Russian Synodal Translation - Public Domain
+
+For more information about Bible translation licenses, visit:
+- https://worldenglish.bible/
+- https://ebible.org/

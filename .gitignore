@@ -1,0 +1,80 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*~
+.project
+.classpath
+.settings/
+
+# Claude Code
+.claude/
+.claude_code/
+.claude_history
+claude_history.json
+CLAUDE.md
+
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Build artifacts / Distribution
+dist/
+build/
+*.tar.gz
+*.zip
+*.deb
+*.rpm
+
+# Homebrew testing
+*.bottle.*
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Package managers (if ever used for testing)
+node_modules/
+package-lock.json
+
+# Test coverage
+coverage/
+.coverage
+
+# Backup files
+*.bak
+*.backup

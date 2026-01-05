@@ -1,0 +1,584 @@
+#!/usr/bin/env bash
+#
+# bibleverse - Display random Bible verses from the command line
+#
+# Uses the bible_api project by Tim Morgan
+# GitHub: https://github.com/seven1m/bible_api
+# API: https://bible-api.com
+#
+# Usage: bibleverse [OPTIONS]
+# See bibleverse -h for full help
+#
+
+set -euo pipefail
+
+#==============================================================================
+# CONFIGURATION
+#==============================================================================
+
+readonly SCRIPT_NAME="bibleverse"
+readonly SCRIPT_VERSION="1.0.0"
+readonly API_BASE_URL="https://bible-api.com/data"
+
+# Available translations (17 Public Domain versions)
+readonly TRANSLATIONS=(
+    "web"        # World English Bible (default)
+    "kjv"        # King James Version
+    "asv"        # American Standard Version
+    "bbe"        # Bible in Basic English
+    "darby"      # Darby Bible
+    "dra"        # Douay-Rheims 1899
+    "ylt"        # Young's Literal Translation
+    "oeb-us"     # Open English Bible (US)
+    "oeb-cw"     # Open English Bible (Commonwealth)
+    "webbe"      # World English Bible (British)
+    "cherokee"   # Cherokee New Testament
+    "cuv"        # Chinese Union Version
+    "bkr"        # Bible kralická (Czech)
+    "clementine" # Clementine Latin Vulgate
+    "almeida"    # João Ferreira de Almeida (Portuguese)
+    "rccv"       # Romanian Corrected Cornilescu
+    "synodal"    # Russian Synodal Translation
+)
+
+# Book name to 3-letter code mapping
+declare -A BOOK_IDS=(
+    # Old Testament
+    ["Genesis"]="GEN" ["Exodus"]="EXO" ["Leviticus"]="LEV" ["Numbers"]="NUM"
+    ["Deuteronomy"]="DEU" ["Joshua"]="JOS" ["Judges"]="JDG" ["Ruth"]="RUT"
+    ["1 Samuel"]="1SA" ["2 Samuel"]="2SA" ["1 Kings"]="1KI" ["2 Kings"]="2KI"
+    ["1 Chronicles"]="1CH" ["2 Chronicles"]="2CH" ["Ezra"]="EZR" ["Nehemiah"]="NEH"
+    ["Esther"]="EST" ["Job"]="JOB" ["Psalms"]="PSA" ["Proverbs"]="PRO"
+    ["Ecclesiastes"]="ECC" ["Song of Solomon"]="SNG" ["Isaiah"]="ISA"
+    ["Jeremiah"]="JER" ["Lamentations"]="LAM" ["Ezekiel"]="EZK" ["Daniel"]="DAN"
+    ["Hosea"]="HOS" ["Joel"]="JOL" ["Amos"]="AMO" ["Obadiah"]="OBA"
+    ["Jonah"]="JON" ["Micah"]="MIC" ["Nahum"]="NAM" ["Habakkuk"]="HAB"
+    ["Zephaniah"]="ZEP" ["Haggai"]="HAG" ["Zechariah"]="ZEC" ["Malachi"]="MAL"
+    # New Testament
+    ["Matthew"]="MAT" ["Mark"]="MRK" ["Luke"]="LUK" ["John"]="JHN"
+    ["Acts"]="ACT" ["Romans"]="ROM" ["1 Corinthians"]="1CO" ["2 Corinthians"]="2CO"
+    ["Galatians"]="GAL" ["Ephesians"]="EPH" ["Philippians"]="PHP" ["Colossians"]="COL"
+    ["1 Thessalonians"]="1TH" ["2 Thessalonians"]="2TH" ["1 Timothy"]="1TI"
+    ["2 Timothy"]="2TI" ["Titus"]="TIT" ["Philemon"]="PHM" ["Hebrews"]="HEB"
+    ["James"]="JAS" ["1 Peter"]="1PE" ["2 Peter"]="2PE" ["1 John"]="1JN"
+    ["2 John"]="2JN" ["3 John"]="3JN" ["Jude"]="JUD" ["Revelation"]="REV"
+)
+
+# Old Testament books
+readonly OT_BOOKS=(
+    "Genesis" "Exodus" "Leviticus" "Numbers" "Deuteronomy" "Joshua" "Judges" "Ruth"
+    "1 Samuel" "2 Samuel" "1 Kings" "2 Kings" "1 Chronicles" "2 Chronicles"
+    "Ezra" "Nehemiah" "Esther" "Job" "Psalms" "Proverbs" "Ecclesiastes"
+    "Song of Solomon" "Isaiah" "Jeremiah" "Lamentations" "Ezekiel" "Daniel"
+    "Hosea" "Joel" "Amos" "Obadiah" "Jonah" "Micah" "Nahum" "Habakkuk"
+    "Zephaniah" "Haggai" "Zechariah" "Malachi"
+)
+
+# New Testament books
+readonly NT_BOOKS=(
+    "Matthew" "Mark" "Luke" "John" "Acts" "Romans" "1 Corinthians" "2 Corinthians"
+    "Galatians" "Ephesians" "Philippians" "Colossians" "1 Thessalonians"
+    "2 Thessalonians" "1 Timothy" "2 Timothy" "Titus" "Philemon" "Hebrews"
+    "James" "1 Peter" "2 Peter" "1 John" "2 John" "3 John" "Jude" "Revelation"
+)
+
+# Global color variables (set by init_colors)
+COLOR_TEXT=""
+COLOR_REF=""
+COLOR_ACCENT=""
+COLOR_RESET=""
+
+#==============================================================================
+# UTILITY FUNCTIONS
+#==============================================================================
+
+# Initialize color codes based on environment
+init_colors() {
+    # Respect NO_COLOR standard (https://no-color.org/)
+    if [[ -n "${NO_COLOR:-}" ]]; then
+        return
+    fi
+
+    # Check if terminal supports colors and tput is available
+    if [[ ! -t 1 ]] || ! command -v tput &>/dev/null; then
+        return
+    fi
+
+    # Get default color codes using tput
+    local default_text
+    local default_ref
+    local default_accent
+    local reset
+
+    default_text=$(tput setaf 15 2>/dev/null || echo "")     # White/default
+    default_ref=$(tput setaf 8 2>/dev/null || echo "")       # Gray/dim
+    default_accent=$(tput setaf 14 2>/dev/null || echo "")   # Cyan
+    reset=$(tput sgr0 2>/dev/null || echo "")
+
+    # Allow customization via environment variables
+    COLOR_TEXT="${BIBLEVERSE_TEXT_COLOR:-$default_text}"
+    COLOR_REF="${BIBLEVERSE_REF_COLOR:-$default_ref}"
+    COLOR_ACCENT="${BIBLEVERSE_ACCENT_COLOR:-$default_accent}"
+    COLOR_RESET="$reset"
+}
+
+# Print error message to stderr and exit
+die() {
+    echo "Error: $*" >&2
+    exit 1
+}
+
+# Print warning message to stderr
+warn() {
+    echo "Warning: $*" >&2
+}
+
+# Check for required dependencies
+check_dependencies() {
+    local missing=()
+
+    for cmd in curl jq; do
+        if ! command -v "$cmd" &>/dev/null; then
+            missing+=("$cmd")
+        fi
+    done
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        die "Missing required dependencies: ${missing[*]}"
+    fi
+}
+
+# Show help text
+show_help() {
+    cat <<EOF
+${COLOR_ACCENT}$SCRIPT_NAME${COLOR_RESET} - Display random Bible verses
+
+${COLOR_ACCENT}USAGE:${COLOR_RESET}
+    ${COLOR_TEXT}$SCRIPT_NAME${COLOR_RESET} [OPTIONS]
+    ${COLOR_TEXT}$SCRIPT_NAME list${COLOR_RESET} ${COLOR_REF}<translations|books>${COLOR_RESET}
+
+${COLOR_ACCENT}OPTIONS:${COLOR_RESET}
+    ${COLOR_TEXT}-t, --testament${COLOR_RESET} ${COLOR_REF}<old|new|both>${COLOR_RESET}    Filter by testament (default: both)
+    ${COLOR_TEXT}-b, --book${COLOR_RESET} ${COLOR_REF}<name>${COLOR_RESET}                 Filter by specific book (e.g., "Psalms", "John")
+    ${COLOR_TEXT}-v, --version${COLOR_RESET} ${COLOR_REF}<translation>${COLOR_RESET}       Bible translation (default: web)
+    ${COLOR_TEXT}-h, --help${COLOR_RESET}                        Show this help message
+
+${COLOR_ACCENT}LIST COMMANDS:${COLOR_RESET}
+    ${COLOR_TEXT}$SCRIPT_NAME list translations${COLOR_RESET}    Show all available Bible translations
+    ${COLOR_TEXT}$SCRIPT_NAME list books${COLOR_RESET}           Show all available books (OT and NT)
+
+${COLOR_ACCENT}EXAMPLES:${COLOR_RESET}
+    ${COLOR_TEXT}$SCRIPT_NAME${COLOR_RESET}                      ${COLOR_REF}# Random verse from anywhere${COLOR_RESET}
+    ${COLOR_TEXT}$SCRIPT_NAME -t old${COLOR_RESET}               ${COLOR_REF}# Random verse from Old Testament${COLOR_RESET}
+    ${COLOR_TEXT}$SCRIPT_NAME -b Psalms${COLOR_RESET}            ${COLOR_REF}# Random verse from Psalms${COLOR_RESET}
+    ${COLOR_TEXT}$SCRIPT_NAME -t new -v kjv${COLOR_RESET}        ${COLOR_REF}# Random NT verse (King James Version)${COLOR_RESET}
+    ${COLOR_TEXT}$SCRIPT_NAME -b John${COLOR_RESET}              ${COLOR_REF}# Random verse from Gospel of John${COLOR_RESET}
+    ${COLOR_TEXT}$SCRIPT_NAME list translations${COLOR_RESET}    ${COLOR_REF}# Show all available translations${COLOR_RESET}
+    ${COLOR_TEXT}$SCRIPT_NAME list books${COLOR_RESET}           ${COLOR_REF}# Show all Bible books${COLOR_RESET}
+
+${COLOR_ACCENT}ENVIRONMENT VARIABLES:${COLOR_RESET}
+    ${COLOR_TEXT}BIBLEVERSE_TEXT_COLOR${COLOR_RESET}             Custom color for verse text
+    ${COLOR_TEXT}BIBLEVERSE_REF_COLOR${COLOR_RESET}              Custom color for verse reference
+    ${COLOR_TEXT}BIBLEVERSE_ACCENT_COLOR${COLOR_RESET}           Custom color for accents
+    ${COLOR_TEXT}NO_COLOR${COLOR_RESET}                          Disable colors if set
+
+${COLOR_ACCENT}API:${COLOR_RESET}
+    Uses ${COLOR_TEXT}bible-api.com${COLOR_RESET} (free, no API key required)
+    Rate limit: ${COLOR_TEXT}15 requests per 30 seconds${COLOR_RESET}
+
+${COLOR_ACCENT}VERSION:${COLOR_RESET}
+    ${COLOR_TEXT}$SCRIPT_VERSION${COLOR_RESET}
+EOF
+}
+
+# List all available translations
+list_translations() {
+    cat <<EOF
+${COLOR_ACCENT}Available Bible Translations${COLOR_RESET}
+
+${COLOR_ACCENT}English Translations:${COLOR_RESET}
+  ${COLOR_TEXT}web${COLOR_RESET}        ${COLOR_REF}-${COLOR_RESET} World English Bible ${COLOR_REF}(default)${COLOR_RESET}
+  ${COLOR_TEXT}kjv${COLOR_RESET}        ${COLOR_REF}-${COLOR_RESET} King James Version
+  ${COLOR_TEXT}asv${COLOR_RESET}        ${COLOR_REF}-${COLOR_RESET} American Standard Version ${COLOR_REF}(1901)${COLOR_RESET}
+  ${COLOR_TEXT}bbe${COLOR_RESET}        ${COLOR_REF}-${COLOR_RESET} Bible in Basic English
+  ${COLOR_TEXT}darby${COLOR_RESET}      ${COLOR_REF}-${COLOR_RESET} Darby Bible
+  ${COLOR_TEXT}dra${COLOR_RESET}        ${COLOR_REF}-${COLOR_RESET} Douay-Rheims 1899 American Edition
+  ${COLOR_TEXT}ylt${COLOR_RESET}        ${COLOR_REF}-${COLOR_RESET} Young's Literal Translation
+  ${COLOR_TEXT}oeb-us${COLOR_RESET}     ${COLOR_REF}-${COLOR_RESET} Open English Bible, US Edition
+  ${COLOR_TEXT}oeb-cw${COLOR_RESET}     ${COLOR_REF}-${COLOR_RESET} Open English Bible, Commonwealth Edition
+  ${COLOR_TEXT}webbe${COLOR_RESET}      ${COLOR_REF}-${COLOR_RESET} World English Bible, British Edition
+
+${COLOR_ACCENT}Other Languages:${COLOR_RESET}
+  ${COLOR_TEXT}cherokee${COLOR_RESET}   ${COLOR_REF}-${COLOR_RESET} Cherokee New Testament
+  ${COLOR_TEXT}cuv${COLOR_RESET}        ${COLOR_REF}-${COLOR_RESET} Chinese Union Version ${COLOR_REF}(Traditional)${COLOR_RESET}
+  ${COLOR_TEXT}bkr${COLOR_RESET}        ${COLOR_REF}-${COLOR_RESET} Bible kralická ${COLOR_REF}(Czech)${COLOR_RESET}
+  ${COLOR_TEXT}clementine${COLOR_RESET} ${COLOR_REF}-${COLOR_RESET} Clementine Latin Vulgate
+  ${COLOR_TEXT}almeida${COLOR_RESET}    ${COLOR_REF}-${COLOR_RESET} João Ferreira de Almeida ${COLOR_REF}(Portuguese)${COLOR_RESET}
+  ${COLOR_TEXT}rccv${COLOR_RESET}       ${COLOR_REF}-${COLOR_RESET} Romanian Corrected Cornilescu Version
+  ${COLOR_TEXT}synodal${COLOR_RESET}    ${COLOR_REF}-${COLOR_RESET} Russian Synodal Translation
+
+${COLOR_ACCENT}Usage:${COLOR_RESET}
+  ${COLOR_TEXT}$SCRIPT_NAME -v kjv${COLOR_RESET}              ${COLOR_REF}# Use King James Version${COLOR_RESET}
+  ${COLOR_TEXT}$SCRIPT_NAME -v web${COLOR_RESET}              ${COLOR_REF}# Use World English Bible (default)${COLOR_RESET}
+  ${COLOR_TEXT}$SCRIPT_NAME -t old -v kjv${COLOR_RESET}       ${COLOR_REF}# Old Testament in KJV${COLOR_RESET}
+EOF
+}
+
+# List all Bible books
+list_books() {
+    cat <<EOF
+${COLOR_ACCENT}Old Testament Books (39)${COLOR_RESET}
+
+${COLOR_ACCENT}Law (5):${COLOR_RESET}
+  ${COLOR_TEXT}GEN${COLOR_RESET} Genesis          ${COLOR_TEXT}EXO${COLOR_RESET} Exodus           ${COLOR_TEXT}LEV${COLOR_RESET} Leviticus
+  ${COLOR_TEXT}NUM${COLOR_RESET} Numbers          ${COLOR_TEXT}DEU${COLOR_RESET} Deuteronomy
+
+${COLOR_ACCENT}History (12):${COLOR_RESET}
+  ${COLOR_TEXT}JOS${COLOR_RESET} Joshua           ${COLOR_TEXT}JDG${COLOR_RESET} Judges           ${COLOR_TEXT}RUT${COLOR_RESET} Ruth
+  ${COLOR_TEXT}1SA${COLOR_RESET} 1 Samuel         ${COLOR_TEXT}2SA${COLOR_RESET} 2 Samuel         ${COLOR_TEXT}1KI${COLOR_RESET} 1 Kings
+  ${COLOR_TEXT}2KI${COLOR_RESET} 2 Kings          ${COLOR_TEXT}1CH${COLOR_RESET} 1 Chronicles     ${COLOR_TEXT}2CH${COLOR_RESET} 2 Chronicles
+  ${COLOR_TEXT}EZR${COLOR_RESET} Ezra             ${COLOR_TEXT}NEH${COLOR_RESET} Nehemiah         ${COLOR_TEXT}EST${COLOR_RESET} Esther
+
+${COLOR_ACCENT}Wisdom & Poetry (5):${COLOR_RESET}
+  ${COLOR_TEXT}JOB${COLOR_RESET} Job              ${COLOR_TEXT}PSA${COLOR_RESET} Psalms           ${COLOR_TEXT}PRO${COLOR_RESET} Proverbs
+  ${COLOR_TEXT}ECC${COLOR_RESET} Ecclesiastes     ${COLOR_TEXT}SNG${COLOR_RESET} Song of Solomon
+
+${COLOR_ACCENT}Major Prophets (5):${COLOR_RESET}
+  ${COLOR_TEXT}ISA${COLOR_RESET} Isaiah           ${COLOR_TEXT}JER${COLOR_RESET} Jeremiah         ${COLOR_TEXT}LAM${COLOR_RESET} Lamentations
+  ${COLOR_TEXT}EZK${COLOR_RESET} Ezekiel          ${COLOR_TEXT}DAN${COLOR_RESET} Daniel
+
+${COLOR_ACCENT}Minor Prophets (12):${COLOR_RESET}
+  ${COLOR_TEXT}HOS${COLOR_RESET} Hosea            ${COLOR_TEXT}JOL${COLOR_RESET} Joel             ${COLOR_TEXT}AMO${COLOR_RESET} Amos
+  ${COLOR_TEXT}OBA${COLOR_RESET} Obadiah          ${COLOR_TEXT}JON${COLOR_RESET} Jonah            ${COLOR_TEXT}MIC${COLOR_RESET} Micah
+  ${COLOR_TEXT}NAM${COLOR_RESET} Nahum            ${COLOR_TEXT}HAB${COLOR_RESET} Habakkuk         ${COLOR_TEXT}ZEP${COLOR_RESET} Zephaniah
+  ${COLOR_TEXT}HAG${COLOR_RESET} Haggai           ${COLOR_TEXT}ZEC${COLOR_RESET} Zechariah        ${COLOR_TEXT}MAL${COLOR_RESET} Malachi
+
+${COLOR_ACCENT}New Testament Books (27)${COLOR_RESET}
+
+${COLOR_ACCENT}Gospels (4):${COLOR_RESET}
+  ${COLOR_TEXT}MAT${COLOR_RESET} Matthew          ${COLOR_TEXT}MRK${COLOR_RESET} Mark             ${COLOR_TEXT}LUK${COLOR_RESET} Luke
+  ${COLOR_TEXT}JHN${COLOR_RESET} John
+
+${COLOR_ACCENT}History (1):${COLOR_RESET}
+  ${COLOR_TEXT}ACT${COLOR_RESET} Acts
+
+${COLOR_ACCENT}Paul's Letters (13):${COLOR_RESET}
+  ${COLOR_TEXT}ROM${COLOR_RESET} Romans           ${COLOR_TEXT}1CO${COLOR_RESET} 1 Corinthians    ${COLOR_TEXT}2CO${COLOR_RESET} 2 Corinthians
+  ${COLOR_TEXT}GAL${COLOR_RESET} Galatians        ${COLOR_TEXT}EPH${COLOR_RESET} Ephesians        ${COLOR_TEXT}PHP${COLOR_RESET} Philippians
+  ${COLOR_TEXT}COL${COLOR_RESET} Colossians       ${COLOR_TEXT}1TH${COLOR_RESET} 1 Thessalonians  ${COLOR_TEXT}2TH${COLOR_RESET} 2 Thessalonians
+  ${COLOR_TEXT}1TI${COLOR_RESET} 1 Timothy        ${COLOR_TEXT}2TI${COLOR_RESET} 2 Timothy        ${COLOR_TEXT}TIT${COLOR_RESET} Titus
+  ${COLOR_TEXT}PHM${COLOR_RESET} Philemon
+
+${COLOR_ACCENT}General Letters (8):${COLOR_RESET}
+  ${COLOR_TEXT}HEB${COLOR_RESET} Hebrews          ${COLOR_TEXT}JAS${COLOR_RESET} James            ${COLOR_TEXT}1PE${COLOR_RESET} 1 Peter
+  ${COLOR_TEXT}2PE${COLOR_RESET} 2 Peter          ${COLOR_TEXT}1JN${COLOR_RESET} 1 John           ${COLOR_TEXT}2JN${COLOR_RESET} 2 John
+  ${COLOR_TEXT}3JN${COLOR_RESET} 3 John           ${COLOR_TEXT}JUD${COLOR_RESET} Jude
+
+${COLOR_ACCENT}Prophecy (1):${COLOR_RESET}
+  ${COLOR_TEXT}REV${COLOR_RESET} Revelation
+
+${COLOR_ACCENT}Usage:${COLOR_RESET}
+  ${COLOR_TEXT}$SCRIPT_NAME -b Psalms${COLOR_RESET}           ${COLOR_REF}# Use full book name${COLOR_RESET}
+  ${COLOR_TEXT}$SCRIPT_NAME -b PSA${COLOR_RESET}              ${COLOR_REF}# Use 3-letter code${COLOR_RESET}
+  ${COLOR_TEXT}$SCRIPT_NAME -b John${COLOR_RESET}             ${COLOR_REF}# Case-insensitive${COLOR_RESET}
+  ${COLOR_TEXT}$SCRIPT_NAME -b JHN${COLOR_RESET}              ${COLOR_REF}# Short codes work too${COLOR_RESET}
+  ${COLOR_TEXT}$SCRIPT_NAME -b "1 Corinthians"${COLOR_RESET}  ${COLOR_REF}# Use quotes for books with spaces/numbers${COLOR_RESET}
+  ${COLOR_TEXT}$SCRIPT_NAME -b 1CO${COLOR_RESET}              ${COLOR_REF}# Or use the short code${COLOR_RESET}
+EOF
+}
+
+#==============================================================================
+# BOOK NAME FUNCTIONS
+#==============================================================================
+
+# Get book ID from book name (case-insensitive)
+get_book_id() {
+    local book_name="$1"
+    local normalized
+
+    # Check if input is already a valid 3-letter code
+    local upper_input="${book_name^^}"
+    for book in "${!BOOK_IDS[@]}"; do
+        if [[ "${BOOK_IDS[$book]}" == "$upper_input" ]]; then
+            echo "$upper_input"
+            return 0
+        fi
+    done
+
+    # Try exact case-insensitive match on book names
+    for book in "${!BOOK_IDS[@]}"; do
+        if [[ "${book,,}" == "${book_name,,}" ]]; then
+            echo "${BOOK_IDS[$book]}"
+            return 0
+        fi
+    done
+
+    # Try partial match (for abbreviations like "1 cor" -> "1 Corinthians")
+    for book in "${!BOOK_IDS[@]}"; do
+        if [[ "${book,,}" == "${book_name,,}"* ]]; then
+            echo "${BOOK_IDS[$book]}"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+# Check if book is in specified testament
+is_book_in_testament() {
+    local book_name="$1"
+    local testament="$2"
+
+    case "$testament" in
+        "old")
+            printf '%s\n' "${OT_BOOKS[@]}" | grep -qi "^${book_name}$"
+            ;;
+        "new")
+            printf '%s\n' "${NT_BOOKS[@]}" | grep -qi "^${book_name}$"
+            ;;
+        "both")
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Get full book name from user input (case-insensitive)
+get_book_name() {
+    local input="$1"
+
+    # Check if input is a 3-letter code
+    local upper_input="${input^^}"
+    for book in "${!BOOK_IDS[@]}"; do
+        if [[ "${BOOK_IDS[$book]}" == "$upper_input" ]]; then
+            echo "$book"
+            return 0
+        fi
+    done
+
+    # Try exact case-insensitive match on book names
+    for book in "${!BOOK_IDS[@]}"; do
+        if [[ "${book,,}" == "${input,,}" ]]; then
+            echo "$book"
+            return 0
+        fi
+    done
+
+    # Try partial match on book names
+    for book in "${!BOOK_IDS[@]}"; do
+        if [[ "${book,,}" == "${input,,}"* ]]; then
+            echo "$book"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+#==============================================================================
+# TRANSLATION FUNCTIONS
+#==============================================================================
+
+# Validate translation ID
+validate_translation() {
+    local trans="$1"
+
+    for valid_trans in "${TRANSLATIONS[@]}"; do
+        if [[ "$trans" == "$valid_trans" ]]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+#==============================================================================
+# API FUNCTIONS
+#==============================================================================
+
+# Fetch random verse from bible-api.com
+fetch_random_verse() {
+    local translation="$1"
+    local filter="$2"  # Can be empty, "OT", "NT", or a book ID like "PSA"
+
+    # Build API URL
+    local url="${API_BASE_URL}/${translation}/random"
+
+    if [[ -n "$filter" ]]; then
+        url="${url}/${filter}"
+    fi
+
+    # Make API request
+    local response
+    if ! response=$(curl -sf "$url" 2>&1); then
+        die "Failed to fetch verse from bible-api.com. Check your internet connection."
+    fi
+
+    echo "$response"
+}
+
+#==============================================================================
+# OUTPUT FUNCTIONS
+#==============================================================================
+
+# Display verse in formatted output
+display_verse() {
+    local json="$1"
+
+    # Extract verse data using jq
+    local text book chapter verse translation_name
+
+    text=$(echo "$json" | jq -r '.random_verse.text' 2>/dev/null)
+    book=$(echo "$json" | jq -r '.random_verse.book' 2>/dev/null)
+    chapter=$(echo "$json" | jq -r '.random_verse.chapter' 2>/dev/null)
+    verse=$(echo "$json" | jq -r '.random_verse.verse' 2>/dev/null)
+    translation_name=$(echo "$json" | jq -r '.translation.name' 2>/dev/null)
+
+    # Check if parsing was successful
+    if [[ "$text" == "null" ]] || [[ -z "$text" ]]; then
+        die "Failed to parse verse data from API response"
+    fi
+
+    # Clean up text (remove HTML tags if any, decode entities)
+    text=$(echo "$text" | sed 's/<[^>]*>//g')
+
+    # Format reference
+    local reference="${book} ${chapter}:${verse}"
+
+    # Display with colors
+    echo
+    echo "${COLOR_TEXT}${text}${COLOR_RESET}"
+    echo
+    echo "${COLOR_REF}— ${reference}${COLOR_RESET} ${COLOR_ACCENT}(${translation_name})${COLOR_RESET}"
+    echo
+}
+
+#==============================================================================
+# ARGUMENT PARSING
+#==============================================================================
+
+# Parse command line arguments
+parse_args() {
+    # Defaults
+    TESTAMENT="both"
+    BOOK=""
+    TRANSLATION="web"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -t|--testament)
+                [[ $# -lt 2 ]] && die "Option $1 requires an argument"
+                TESTAMENT="$2"
+                shift 2
+                ;;
+            -b|--book)
+                [[ $# -lt 2 ]] && die "Option $1 requires an argument"
+                BOOK="$2"
+                shift 2
+                ;;
+            -v|--version)
+                [[ $# -lt 2 ]] && die "Option $1 requires an argument"
+                TRANSLATION="$2"
+                shift 2
+                ;;
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            *)
+                die "Unknown option: $1. Use -h for help."
+                ;;
+        esac
+    done
+
+    # Validate testament
+    case "$TESTAMENT" in
+        old|new|both) ;;
+        *) die "Invalid testament: $TESTAMENT. Must be 'old', 'new', or 'both'." ;;
+    esac
+
+    # Validate translation
+    if ! validate_translation "$TRANSLATION"; then
+        die "Invalid translation: $TRANSLATION. Use -h to see available translations."
+    fi
+
+    # Validate and normalize book if specified
+    if [[ -n "$BOOK" ]]; then
+        local full_book_name
+        if ! full_book_name=$(get_book_name "$BOOK"); then
+            die "Unknown book: $BOOK. Use -h for help."
+        fi
+
+        BOOK="$full_book_name"
+
+        # Check if book matches testament filter
+        if [[ "$TESTAMENT" != "both" ]]; then
+            if ! is_book_in_testament "$BOOK" "$TESTAMENT"; then
+                die "Book '$BOOK' is not in the $TESTAMENT testament"
+            fi
+        fi
+    fi
+}
+
+#==============================================================================
+# MAIN FUNCTION
+#==============================================================================
+
+main() {
+    # Initialize
+    check_dependencies
+    init_colors
+
+    # Handle list subcommands before parsing regular arguments
+    if [[ $# -gt 0 ]] && [[ "$1" == "list" ]]; then
+        if [[ $# -lt 2 ]]; then
+            die "Usage: $SCRIPT_NAME list <translations|books>"
+        fi
+
+        case "$2" in
+            translations)
+                list_translations
+                exit 0
+                ;;
+            books)
+                list_books
+                exit 0
+                ;;
+            *)
+                die "Unknown list option: $2. Use 'translations' or 'books'."
+                ;;
+        esac
+    fi
+
+    # Parse arguments
+    parse_args "$@"
+
+    # Determine API filter parameter
+    local filter=""
+
+    if [[ -n "$BOOK" ]]; then
+        # Book filtering takes precedence
+        local book_id
+        if ! book_id=$(get_book_id "$BOOK"); then
+            die "Failed to get book ID for: $BOOK"
+        fi
+        filter="$book_id"
+    elif [[ "$TESTAMENT" == "old" ]]; then
+        filter="OT"
+    elif [[ "$TESTAMENT" == "new" ]]; then
+        filter="NT"
+    fi
+    # If testament is "both" and no book specified, filter stays empty
+
+    # Fetch verse
+    local verse_json
+    verse_json=$(fetch_random_verse "$TRANSLATION" "$filter")
+
+    # Display verse
+    display_verse "$verse_json"
+}
+
+# Entry point
+main "$@"
