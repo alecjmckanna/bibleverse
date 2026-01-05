@@ -159,7 +159,7 @@ ${COLOR_ACCENT}USAGE:${COLOR_RESET}
 
 ${COLOR_ACCENT}OPTIONS:${COLOR_RESET}
     ${COLOR_TEXT}-t, --testament${COLOR_RESET} ${COLOR_REF}<old|new|both>${COLOR_RESET}    Filter by testament (default: both)
-    ${COLOR_TEXT}-b, --book${COLOR_RESET} ${COLOR_REF}<name>${COLOR_RESET}                 Filter by specific book (e.g., "Psalms", "John")
+    ${COLOR_TEXT}-b, --book${COLOR_RESET} ${COLOR_REF}<name[,name,...]>${COLOR_RESET}     Filter by book(s) (e.g., "Psalms" or "MAT,MRK,LUK,JHN")
     ${COLOR_TEXT}-v, --version${COLOR_RESET} ${COLOR_REF}<translation>${COLOR_RESET}       Bible translation (default: web)
     ${COLOR_TEXT}-h, --help${COLOR_RESET}                        Show this help message
 
@@ -171,8 +171,9 @@ ${COLOR_ACCENT}EXAMPLES:${COLOR_RESET}
     ${COLOR_TEXT}$SCRIPT_NAME${COLOR_RESET}                      ${COLOR_REF}# Random verse from anywhere${COLOR_RESET}
     ${COLOR_TEXT}$SCRIPT_NAME -t old${COLOR_RESET}               ${COLOR_REF}# Random verse from Old Testament${COLOR_RESET}
     ${COLOR_TEXT}$SCRIPT_NAME -b Psalms${COLOR_RESET}            ${COLOR_REF}# Random verse from Psalms${COLOR_RESET}
+    ${COLOR_TEXT}$SCRIPT_NAME -b MAT,MRK,LUK,JHN${COLOR_RESET}   ${COLOR_REF}# Random verse from the four Gospels${COLOR_RESET}
+    ${COLOR_TEXT}$SCRIPT_NAME -b "Matthew,Mark"${COLOR_RESET}    ${COLOR_REF}# Random verse from Matthew or Mark${COLOR_RESET}
     ${COLOR_TEXT}$SCRIPT_NAME -t new -v kjv${COLOR_RESET}        ${COLOR_REF}# Random NT verse (King James Version)${COLOR_RESET}
-    ${COLOR_TEXT}$SCRIPT_NAME -b John${COLOR_RESET}              ${COLOR_REF}# Random verse from Gospel of John${COLOR_RESET}
     ${COLOR_TEXT}$SCRIPT_NAME list translations${COLOR_RESET}    ${COLOR_REF}# Show all available translations${COLOR_RESET}
     ${COLOR_TEXT}$SCRIPT_NAME list books${COLOR_RESET}           ${COLOR_REF}# Show all Bible books${COLOR_RESET}
 
@@ -284,6 +285,7 @@ ${COLOR_ACCENT}Usage:${COLOR_RESET}
   ${COLOR_TEXT}$SCRIPT_NAME -b JHN${COLOR_RESET}              ${COLOR_REF}# Short codes work too${COLOR_RESET}
   ${COLOR_TEXT}$SCRIPT_NAME -b "1 Corinthians"${COLOR_RESET}  ${COLOR_REF}# Use quotes for books with spaces/numbers${COLOR_RESET}
   ${COLOR_TEXT}$SCRIPT_NAME -b 1CO${COLOR_RESET}              ${COLOR_REF}# Or use the short code${COLOR_RESET}
+  ${COLOR_TEXT}$SCRIPT_NAME -b MAT,MRK,LUK,JHN${COLOR_RESET}  ${COLOR_REF}# Multiple books (comma-separated)${COLOR_RESET}
 EOF
 }
 
@@ -463,7 +465,7 @@ display_verse() {
 parse_args() {
     # Defaults
     TESTAMENT="both"
-    BOOK=""
+    BOOKS=()
     TRANSLATION="web"
 
     while [[ $# -gt 0 ]]; do
@@ -475,7 +477,8 @@ parse_args() {
                 ;;
             -b|--book)
                 [[ $# -lt 2 ]] && die "Option $1 requires an argument"
-                BOOK="$2"
+                # Split comma-separated books
+                IFS=',' read -ra BOOK_LIST <<< "$2"
                 shift 2
                 ;;
             -v|--version)
@@ -504,21 +507,26 @@ parse_args() {
         die "Invalid translation: $TRANSLATION. Use -h to see available translations."
     fi
 
-    # Validate and normalize book if specified
-    if [[ -n "$BOOK" ]]; then
-        local full_book_name
-        if ! full_book_name=$(get_book_name "$BOOK"); then
-            die "Unknown book: $BOOK. Use -h for help."
-        fi
+    # Validate and normalize books if specified
+    if [[ ${#BOOK_LIST[@]} -gt 0 ]]; then
+        for book in "${BOOK_LIST[@]}"; do
+            # Trim whitespace
+            book=$(echo "$book" | xargs)
 
-        BOOK="$full_book_name"
-
-        # Check if book matches testament filter
-        if [[ "$TESTAMENT" != "both" ]]; then
-            if ! is_book_in_testament "$BOOK" "$TESTAMENT"; then
-                die "Book '$BOOK' is not in the $TESTAMENT testament"
+            local full_book_name
+            if ! full_book_name=$(get_book_name "$book"); then
+                die "Unknown book: $book. Use -h for help."
             fi
-        fi
+
+            # Check if book matches testament filter
+            if [[ "$TESTAMENT" != "both" ]]; then
+                if ! is_book_in_testament "$full_book_name" "$TESTAMENT"; then
+                    die "Book '$full_book_name' is not in the $TESTAMENT testament"
+                fi
+            fi
+
+            BOOKS+=("$full_book_name")
+        done
     fi
 }
 
@@ -558,11 +566,22 @@ main() {
     # Determine API filter parameter
     local filter=""
 
-    if [[ -n "$BOOK" ]]; then
+    if [[ ${#BOOKS[@]} -gt 0 ]]; then
         # Book filtering takes precedence
+        local selected_book
+
+        if [[ ${#BOOKS[@]} -eq 1 ]]; then
+            # Only one book specified
+            selected_book="${BOOKS[0]}"
+        else
+            # Multiple books - randomly select one
+            local random_index=$((RANDOM % ${#BOOKS[@]}))
+            selected_book="${BOOKS[$random_index]}"
+        fi
+
         local book_id
-        if ! book_id=$(get_book_id "$BOOK"); then
-            die "Failed to get book ID for: $BOOK"
+        if ! book_id=$(get_book_id "$selected_book"); then
+            die "Failed to get book ID for: $selected_book"
         fi
         filter="$book_id"
     elif [[ "$TESTAMENT" == "old" ]]; then
