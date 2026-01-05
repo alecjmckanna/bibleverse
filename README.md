@@ -2,6 +2,34 @@
 
 A simple, fast command-line tool for displaying random Bible verses in your terminal.
 
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+  - [Quick Install Script (Recommended)](#quick-install-script-recommended)
+  - [Manual Installation](#manual-installation)
+- [Usage](#usage)
+  - [Basic Usage](#basic-usage)
+  - [Using Different Translations](#using-different-translations)
+  - [Using Book Codes](#using-book-codes)
+  - [Advanced Examples](#advanced-examples)
+- [Available Translations](#available-translations)
+- [Customization](#customization)
+  - [Custom Colors](#custom-colors)
+  - [Integration with Shell Startup](#integration-with-shell-startup)
+- [Requirements](#requirements)
+- [API](#api)
+- [Help & Documentation](#help--documentation)
+- [Contributing](#contributing)
+  - [Development](#development)
+- [License](#license)
+  - [Third-Party Licenses](#third-party-licenses)
+- [Acknowledgments](#acknowledgments)
+- [Roadmap](#roadmap)
+- [Support](#support)
+- [Author](#author)
+- [Version](#version)
+
 ## Features
 
 - 📖 **Random Bible verses** from any book or testament
